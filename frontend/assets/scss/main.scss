@@ -1,0 +1,83 @@
+@use "tokens";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--tx);
+}
+
+#__nuxt {
+  height: 100%;
+}
+
+input,
+button {
+  font-family: inherit;
+}
+
+// 프로토타입 애니메이션
+@keyframes gxspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gxfade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes gxtoast {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes gxpop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+// 공통 유틸리티 클래스
+.gx-btn {
+  cursor: pointer;
+  font-family: inherit;
+  &:active {
+    transform: translateY(1px);
+  }
+}
+
+.gx-row:hover {
+  background: var(--hover) !important;
+}
+
+.gx-nav:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
