@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node / Nuxt (frontend)
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/dist/
+
+# Local file storage (backend)
+backend/storage/*
+!backend/storage/**/.gitkeep
+
+.claude
