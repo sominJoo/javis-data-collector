@@ -67,26 +67,6 @@ onMounted(load);
 
 <template>
   <div class="page">
-    <!-- 통계 카드 -->
-    <div class="stats">
-      <div class="stat">
-        <div class="stat-label">전체 데이터</div>
-        <div class="stat-val">{{ stats.total }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">분석 완료</div>
-        <div class="stat-val" style="color: var(--grn)">{{ stats.done }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">분석 중</div>
-        <div class="stat-val" style="color: var(--amb)">{{ stats.ing }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">총 Chunk</div>
-        <div class="stat-val">{{ stats.chunks }}</div>
-      </div>
-    </div>
-
     <!-- 헤더 -->
     <div class="head">
       <h3>원본 데이터</h3>
@@ -149,27 +129,6 @@ onMounted(load);
 .page {
   padding: 26px 28px;
   animation: gxfade 0.3s ease;
-}
-.stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.stat {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px 16px;
-}
-.stat-label {
-  font-size: 12px;
-  color: var(--tx3);
-  margin-bottom: 6px;
-}
-.stat-val {
-  font-size: 24px;
-  font-weight: 800;
 }
 .head {
   display: flex;

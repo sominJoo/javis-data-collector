@@ -117,6 +117,7 @@ export interface ApiKey {
   id: string;
   name: string;
   keyMasked: string;
+  keyPlain?: string; // 발급 직후 1회만 반환되는 평문 토큰 (저장하지 않음)
   active: boolean;
   expireAt: string;
   lastUsedAt: string | null;

@@ -15,6 +15,12 @@ const editingNew = ref(false);
 const form = ref<ApiKey>(blankKey());
 const savingKey = ref(false);
 
+// --- 발급 완료 모달 (평문 토큰 1회 노출) ---
+const issuedModalOpen = ref(false);
+const issuedKey = ref("");
+const issuedName = ref("");
+const copied = ref(false);
+
 // --- DB 연결 모달 ---
 const dbModalOpen = ref(false);
 const dbForm = ref(blankDb());
@@ -82,12 +88,31 @@ function openEdit(key: ApiKey) {
 async function saveKey() {
   savingKey.value = true;
   try {
-    await api.saveApiKey(form.value, editingNew.value);
+    const isNew = editingNew.value;
+    const saved = await api.saveApiKey(form.value, isNew);
     keyModalOpen.value = false;
     await load();
-    toast(editingNew.value ? "API Key가 생성되었습니다." : "API Key 정보가 저장되었습니다.");
+    if (isNew && saved.keyPlain) {
+      // 발급된 평문 토큰은 지금 한 번만 노출된다 → 발급 완료 모달로 안내
+      issuedKey.value = saved.keyPlain;
+      issuedName.value = saved.name;
+      copied.value = false;
+      issuedModalOpen.value = true;
+    } else {
+      toast("API Key 정보가 저장되었습니다.");
+    }
   } finally {
     savingKey.value = false;
+  }
+}
+async function copyIssuedKey() {
+  try {
+    await navigator.clipboard.writeText(issuedKey.value);
+    copied.value = true;
+    toast("API Key가 클립보드에 복사되었습니다.");
+    setTimeout(() => (copied.value = false), 2000);
+  } catch {
+    toast("복사에 실패했습니다. 직접 선택해 복사해주세요.", "err");
   }
 }
 async function toggle(key: ApiKey) {
@@ -374,6 +399,33 @@ onMounted(load);
             {{ dbTesting ? "테스트 중..." : "연결 테스트" }}
           </button>
           <button class="gx-btn btn-primary" :disabled="!canSaveDb" @click="saveDb">저장</button>
+        </div>
+      </div>
+    </AppModal>
+
+    <!-- API Key 발급 완료 모달 (평문 토큰 1회 노출) -->
+    <AppModal v-model:open="issuedModalOpen" title="API Key 발급 완료">
+      <div class="issued">
+        <div class="issued-hint">
+          <b>{{ issuedName }}</b> 키가 발급되었습니다. 아래 토큰은
+          <b class="warn-tx">지금 한 번만 표시</b>되며, 이후에는 다시 확인할 수 없습니다.
+          안전한 곳에 복사해 보관하세요.
+        </div>
+        <div class="key-box">
+          <code class="key-value">{{ issuedKey }}</code>
+          <button class="copy-btn" :class="{ done: copied }" @click="copyIssuedKey">
+            <svg v-if="!copied" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+            <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            {{ copied ? "복사됨" : "복사" }}
+          </button>
+        </div>
+        <div class="modal-actions">
+          <button class="gx-btn btn-primary" @click="issuedModalOpen = false">확인</button>
         </div>
       </div>
     </AppModal>
@@ -756,5 +808,60 @@ h3 {
   margin-left: 0;
   box-shadow: none;
   height: 42px;
+}
+
+/* 발급 완료 모달 */
+.issued {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.issued-hint {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--tx2);
+  b {
+    color: var(--tx);
+  }
+  .warn-tx {
+    color: var(--amb);
+  }
+}
+.key-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--field);
+  border: 1px solid var(--fieldline);
+}
+.key-value {
+  flex: 1;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--tx);
+  word-break: break-all;
+  user-select: all;
+}
+.copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid var(--line2);
+  background: var(--panel);
+  color: var(--tx);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  &.done {
+    color: var(--grn);
+    border-color: var(--grn);
+    background: var(--grn-bg);
+  }
 }
 </style>
