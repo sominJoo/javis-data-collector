@@ -215,9 +215,16 @@ function createMockApi(): DataCollectorApi {
     async saveApiKey(payload, isNew) {
       await delay();
       if (isNew) {
-        const created = { ...payload, id: `k-${Date.now()}` };
-        mockApiKeys.push(created);
-        return created;
+        // 발급 시 평문 토큰을 생성한다. 저장본에는 마스킹만 보관하고,
+        // 평문(keyPlain)은 반환값에만 담아 화면에서 1회 노출한다.
+        const rand = Array.from({ length: 32 }, () =>
+          "abcdefghijklmnopqrstuvwxyz0123456789".charAt(Math.floor(Math.random() * 36)),
+        ).join("");
+        const keyPlain = `sk-graphio-${rand}`;
+        const keyMasked = `sk-graphio-••••••••••${rand.slice(-4)}`;
+        const stored = { ...payload, id: `k-${Date.now()}`, keyMasked };
+        mockApiKeys.push(stored);
+        return { ...stored, keyPlain };
       }
       const idx = mockApiKeys.findIndex((k) => k.id === payload.id);
       if (idx < 0) throw new Error("API Key를 찾을 수 없습니다.");
