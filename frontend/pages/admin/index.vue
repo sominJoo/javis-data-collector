@@ -155,11 +155,16 @@ async function testDb() {
 // 마이그레이션 승인/거부
 async function migrateYes() {
   dbMigrating.value = true;
+  dbError.value = "";
   try {
     await api.migrateDb(dbForm.value);
     dbMigChoice.value = "yes";
     dbMigrated.value = true;
     toast("마이그레이션이 완료되었습니다.");
+  } catch {
+    dbError.value =
+      "마이그레이션에 실패했습니다. 대상 DB에 pgvector 확장과 한국어 검색 설정(korean)이 준비되어 있는지 확인하세요.";
+    toast("마이그레이션에 실패했습니다.", "err");
   } finally {
     dbMigrating.value = false;
   }
@@ -197,8 +202,8 @@ function removeDb(id: string) {
   form.value.dbConnections = form.value.dbConnections.filter((d) => d.id !== id);
 }
 
-function fmtDate(iso: string): string {
-  return iso.slice(0, 10);
+function fmtDate(iso: string | null): string {
+  return iso ? iso.slice(0, 10) : "무기한";
 }
 function fmtUsed(iso: string | null): string {
   return iso ? iso.slice(0, 10) : "미사용";
@@ -369,6 +374,25 @@ onMounted(load);
               마이그레이션을 진행하시겠습니까? 진행하지 않으면 연결정보를 등록할 수 없습니다.
             </div>
           </div>
+
+          <!-- 진행 전 대상 DB 서버에 미리 준비되어 있어야 하는 항목 -->
+          <div class="mig-prereq">
+            <div class="mig-prereq-t">진행 전, 대상 DB 서버에 아래 항목이 준비되어 있어야 합니다</div>
+            <ul>
+              <li>
+                <b>pgvector 확장</b> — 임베딩 벡터 검색용. 서버에 pgvector가 설치되어 있어야
+                <code>CREATE EXTENSION vector</code> 가 성공합니다.
+              </li>
+              <li>
+                <b>한국어 검색 설정(<code>korean</code>)</b> — 전문 검색용 mecab 기반 text search config.
+                수집기가 자동 생성하지 않으므로 미리 만들어 두어야 합니다.
+              </li>
+              <li>
+                <b>확장·스키마 생성 권한</b> — 위 항목 생성을 위해 해당 권한이 있는 계정으로 연결해야 합니다.
+              </li>
+            </ul>
+          </div>
+
           <div class="mig-actions">
             <button class="mig-yes" :disabled="dbMigrating" @click="migrateYes">
               {{ dbMigrating ? "진행 중..." : "마이그레이션 진행" }}
@@ -731,6 +755,35 @@ h3 {
     flex: 0 0 auto;
     margin-top: 1px;
   }
+}
+.mig-prereq {
+  margin: 0 0 13px 29px;
+  padding: 11px 14px;
+  border-radius: 9px;
+  border: 1px dashed var(--amb);
+  background: var(--amb-bg);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--tx2);
+}
+.mig-prereq-t {
+  font-weight: 700;
+  color: var(--tx);
+  margin-bottom: 7px;
+}
+.mig-prereq ul {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.mig-prereq code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  border: 1px solid var(--amb);
+  padding: 1px 5px;
+  border-radius: 5px;
 }
 .mig-actions {
   display: flex;

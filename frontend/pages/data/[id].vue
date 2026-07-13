@@ -276,7 +276,7 @@ onMounted(load);
 
 .grid {
   display: grid;
-  grid-template-columns: 1fr 1.15fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: 14px;
   margin-bottom: 16px;
 }
@@ -336,6 +336,7 @@ onMounted(load);
   flex: 0 0 auto;
 }
 .chunk-text {
+  min-width: 0;
   color: var(--tx2);
   white-space: nowrap;
   overflow: hidden;

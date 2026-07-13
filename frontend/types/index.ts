@@ -59,7 +59,9 @@ export interface RawDataDetail extends RawData {
 export type SkillStatus = "none" | "gen" | "uploaded";
 
 export interface ReportSkill {
+  skillType: string; // WORKFLOW | CONCEPT_EXTRACTION | EVALUATION_POLICY
   name: string;
+  description: string;
   status: SkillStatus;
   content: string;
 }
@@ -75,11 +77,15 @@ export interface ReportType {
   active: boolean;
 }
 
-// 필수 Skill 기본값 (정책 문서 4.3)
-export const DEFAULT_SKILLS = ["문서 구조 추출 Skill", "핵심 조항 분류 Skill", "리스크 평가 Skill"] as const;
+// 필수 Skill 기본값 (정책 문서 4.3): 3종 고정
+export const DEFAULT_SKILLS: { skillType: string; name: string }[] = [
+  { skillType: "WORKFLOW", name: "작성 Workflow" },
+  { skillType: "CONCEPT_EXTRACTION", name: "핵심개념 추출" },
+  { skillType: "EVALUATION_POLICY", name: "평가 기준" },
+];
 
 export function blankSkills(): ReportSkill[] {
-  return DEFAULT_SKILLS.map((name) => ({ name, status: "none", content: "" }));
+  return DEFAULT_SKILLS.map((s) => ({ ...s, description: "", status: "none", content: "" }));
 }
 
 // LLM / Embedding 설정 (API Key에 귀속)
@@ -151,6 +157,16 @@ export interface DataRegisterPayload {
 export interface Job {
   jobId: string;
   status: JobStatus;
+}
+
+// 분석 진행 상태 (백엔드 GET /jobs/{id}/progress). current_step은 파이프라인 단계 키.
+export interface JobProgress {
+  status: "RUNNING" | "COMPLETED" | "FAILED";
+  totalFiles: number;
+  currentFileIndex: number;
+  currentFileName: string;
+  currentStep: PipelineStageKey | "DONE";
+  errorMessage: string | null;
 }
 
 // AI 분석 파이프라인 단계 (정책 문서 5.1)

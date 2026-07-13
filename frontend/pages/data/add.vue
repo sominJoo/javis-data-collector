@@ -15,22 +15,40 @@ const selectedType = ref<string>("");
 const files = ref<UploadedFile[]>([]);
 const chunkCount = ref(700);
 const fileInput = ref<HTMLInputElement | null>(null);
+const uploading = ref(false);
+const uploadError = ref("");
 
-const canStart = computed(() => selectedType.value !== "" && files.value.length > 0);
+const canStart = computed(
+  () => selectedType.value !== "" && files.value.length > 0 && !uploading.value,
+);
 
 function pickFiles() {
+  if (uploading.value) return;
   fileInput.value?.click();
 }
-function onFilesChosen(e: Event) {
+// 선택한 파일을 즉시 서버에 업로드하고, 반환된 실제 fileId로 목록에 추가한다.
+async function onFilesChosen(e: Event) {
   const input = e.target as HTMLInputElement;
-  for (const f of Array.from(input.files ?? [])) {
-    files.value.push({
-      id: `f-${Date.now()}-${files.value.length}`,
-      name: f.name,
-      size: `${(f.size / 1024).toFixed(1)} KB`,
-    });
-  }
+  const chosen = Array.from(input.files ?? []);
   input.value = "";
+  if (chosen.length === 0) return;
+
+  uploading.value = true;
+  uploadError.value = "";
+  try {
+    for (const f of chosen) {
+      const { fileId } = await api.uploadFile(f);
+      files.value.push({
+        id: fileId,
+        name: f.name,
+        size: `${(f.size / 1024).toFixed(1)} KB`,
+      });
+    }
+  } catch (err) {
+    uploadError.value = err instanceof Error ? err.message : "파일 업로드에 실패했습니다.";
+  } finally {
+    uploading.value = false;
+  }
 }
 function addDemoFile() {
   const n = files.value.length + 1;
@@ -57,33 +75,79 @@ function onChunkInput(e: Event) {
 const stages = PIPELINE_STAGES;
 const currentFileIdx = ref(0); // 현재 분석 중인 파일 인덱스
 const currentStage = ref(0); // 현재 파일의 진행 중 단계 인덱스
+const registering = ref(false); // 등록 API 요청 진행 중
+const registerError = ref(""); // 등록/분석 실패 메시지
 let jobId = "";
-let timer: ReturnType<typeof setInterval> | undefined;
+let timer: ReturnType<typeof setInterval> | undefined; // 진행 상태 폴링 인터벌
+let pollFails = 0; // 연속 폴링 실패 횟수(일시적 오류 허용용)
 
-async function startPipeline() {
+// 버튼 클릭: 우선 2단계(업로드·분석)로 이동만 한다. 실제 등록 API는 2단계 화면에서 호출한다.
+function startPipeline() {
   if (!canStart.value) return;
-  const res = await api.registerData({
-    reportTypeCode: selectedType.value,
-    files: files.value,
-    chunkCount: chunkCount.value,
-  });
-  jobId = res.jobId;
   step.value = 2;
+  void register();
+}
+
+// 2단계 화면에서 실제 등록(백그라운드 분석 시작)을 요청하고, 진행 상태를 폴링한다.
+async function register() {
+  registering.value = true;
+  registerError.value = "";
   currentFileIdx.value = 0;
   currentStage.value = 0;
-  timer = setInterval(() => {
-    currentStage.value++;
-    if (currentStage.value >= stages.length) {
-      // 현재 파일 완료 → 다음 파일로 이동, 마지막 파일이면 검토 단계로
-      if (currentFileIdx.value >= files.value.length - 1) {
-        clearInterval(timer);
-        void goReview();
-      } else {
-        currentFileIdx.value++;
-        currentStage.value = 0;
-      }
+  stopPolling();
+  try {
+    const res = await api.registerData({
+      reportTypeCode: selectedType.value,
+      files: files.value,
+      chunkCount: chunkCount.value,
+    });
+    jobId = res.jobId;
+    registering.value = false;
+    startPolling();
+  } catch (err) {
+    registering.value = false;
+    registerError.value =
+      err instanceof Error ? err.message : "등록 및 분석 요청에 실패했습니다.";
+  }
+}
+
+// 백엔드 진행 상태(GET /jobs/{id}/progress)를 주기적으로 조회해 단계 UI에 반영한다.
+// 단계 전환만 실제 신호로 갱신하고, 단계 내부 진행바는 연출(CSS)로 처리한다.
+function startPolling() {
+  pollFails = 0;
+  timer = setInterval(pollProgress, 900);
+  void pollProgress(); // 대기 없이 즉시 1회
+}
+
+function stopPolling() {
+  if (timer) clearInterval(timer);
+  timer = undefined;
+}
+
+async function pollProgress() {
+  try {
+    const p = await api.getJobProgress(jobId);
+    pollFails = 0;
+    currentFileIdx.value = p.currentFileIndex;
+    // current_step은 현재 활성 단계 키. DONE이면 모든 단계 완료로 표시.
+    const idx = stages.findIndex((s) => s.key === p.currentStep);
+    currentStage.value = idx >= 0 ? idx : stages.length;
+    if (p.status === "COMPLETED") {
+      stopPolling();
+      void goReview();
+    } else if (p.status === "FAILED") {
+      stopPolling();
+      registerError.value =
+        p.errorMessage || "분석 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
     }
-  }, 700);
+  } catch (err) {
+    // 일시적 조회 실패는 몇 회 허용하고, 반복되면 중단·에러 표시.
+    if (++pollFails >= 3) {
+      stopPolling();
+      registerError.value =
+        err instanceof Error ? err.message : "진행 상태를 확인할 수 없습니다.";
+    }
+  }
 }
 
 // 파일별 상태: 이미 처리된 파일은 done, 현재 파일은 active, 나머지는 todo
@@ -143,7 +207,7 @@ const selectedTypeObj = computed(() =>
 onMounted(async () => {
   reportTypes.value = await api.listReportTypes();
 });
-onBeforeUnmount(() => timer && clearInterval(timer));
+onBeforeUnmount(() => stopPolling());
 </script>
 
 <template>
@@ -199,16 +263,17 @@ onBeforeUnmount(() => timer && clearInterval(timer));
         <div class="card">
           <div class="card-title mb">② 파일 업로드</div>
           <input ref="fileInput" type="file" multiple hidden @change="onFilesChosen" />
-          <div class="dropzone gx-btn" @click="pickFiles">
+          <div class="dropzone gx-btn" :class="{ busy: uploading }" @click="pickFiles">
             <div class="dz-icon">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a94fa0" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
               </svg>
             </div>
-            <div class="dz-title">클릭하여 파일 추가</div>
+            <div class="dz-title">{{ uploading ? "업로드 중..." : "클릭하여 파일 추가" }}</div>
             <div class="dz-sub">PDF · DOCX · HWP · XLSX · 여러 개 가능</div>
           </div>
           <button class="gx-btn demo-add" @click="addDemoFile">데모 파일 추가</button>
+          <div v-if="uploadError" class="upload-error">{{ uploadError }}</div>
           <div class="file-list">
             <div v-for="f in files" :key="f.id" class="file-item">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cf5151" stroke-width="1.8">
@@ -275,14 +340,25 @@ onBeforeUnmount(() => timer && clearInterval(timer));
 
       <div class="card pipe">
         <div class="pipe-head">
-          <span class="pipe-dot" />
-          <span class="pipe-title">AI 분석 진행 중</span>
-          <span class="pipe-progress">{{ pipeProgress }}</span>
+          <span class="pipe-dot" :class="{ err: registerError }" />
+          <span class="pipe-title">
+            {{ registerError ? "등록 실패" : registering ? "등록 요청 중..." : "AI 분석 진행 중" }}
+          </span>
+          <span v-if="!registerError" class="pipe-progress">{{ pipeProgress }}</span>
         </div>
         <div class="pipe-sub">파일별로 순차 분석합니다. 파일 1개당 원본 데이터 1건으로 저장됩니다.</div>
 
+        <!-- 등록 API 실패: 이전 단계로 돌아가거나 다시 시도 -->
+        <div v-if="registerError" class="register-error-box">
+          <div class="reb-msg">{{ registerError }}</div>
+          <div class="reb-actions">
+            <button class="gx-btn btn-ghost" @click="step = 1">이전 단계로</button>
+            <button class="gx-btn btn-primary" @click="register">다시 시도</button>
+          </div>
+        </div>
+
         <!-- 파일별 분석 -->
-        <div class="file-pipes">
+        <div v-else class="file-pipes">
           <div
             v-for="(f, fi) in files"
             :key="f.id"
@@ -560,6 +636,15 @@ onBeforeUnmount(() => timer && clearInterval(timer));
   font-size: 12px;
   color: var(--tx3);
 }
+.dropzone.busy {
+  opacity: 0.6;
+  cursor: default;
+}
+.upload-error {
+  font-size: 12px;
+  color: var(--cf5151, #cf5151);
+  margin-bottom: 10px;
+}
 .demo-add {
   width: 100%;
   height: 32px;
@@ -755,10 +840,48 @@ onBeforeUnmount(() => timer && clearInterval(timer));
   font-weight: 700;
   color: var(--pri);
 }
+.pipe-dot.err {
+  background: var(--red, #cf5151);
+  box-shadow: 0 0 0 4px var(--red-bg, rgba(207, 81, 81, 0.15));
+}
 .pipe-sub {
   font-size: 12.5px;
   color: var(--tx3);
   margin-bottom: 22px;
+}
+
+/* 등록 실패 */
+.register-error-box {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  text-align: center;
+  padding: 30px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel2);
+}
+.reb-msg {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red, #cf5151);
+  line-height: 1.6;
+}
+.reb-actions {
+  display: flex;
+  gap: 10px;
+  .btn-ghost {
+    flex: 0 0 auto;
+    padding: 0 20px;
+    height: 42px;
+  }
+  .btn-primary {
+    flex: 0 0 auto;
+    padding: 0 24px;
+    height: 42px;
+    box-shadow: none;
+  }
 }
 
 /* 파일별 분석 */
@@ -889,16 +1012,31 @@ onBeforeUnmount(() => timer && clearInterval(timer));
   min-width: 0;
 }
 .ps-bar {
+  position: relative;
   height: 4px;
   border-radius: 999px;
   background: var(--panel);
   margin-top: 8px;
   overflow: hidden;
 }
+/* 실제 진행률을 알 수 없으므로 좌→우로 흐르는 indeterminate 로딩 바로 표시 */
 .ps-fill {
-  width: 60%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
   height: 100%;
+  border-radius: 999px;
   background: linear-gradient(90deg, #7c4da0, #c05cab);
+  animation: psIndeterminate 2s ease-in-out infinite;
+}
+@keyframes psIndeterminate {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
 }
 
 /* step3 */
