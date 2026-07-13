@@ -1,36 +1,68 @@
-import uuid
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from fastapi import APIRouter, BackgroundTasks, Depends
-from pydantic import BaseModel
-
-from app.core.security import get_current_token_payload
+from app.core.deps import UserContext, get_user_context, get_user_db
 from app.schemas.common import ApiResponse
+from app.schemas.data import (
+    DataRegisterPayload,
+    DataStatsOut,
+    RawDataDetailOut,
+    RawDataOut,
+    RegisterResponse,
+)
+from app.services import data_service
+from app.services.errors import NotFoundError
 
 router = APIRouter(prefix="/data", tags=["data"])
 
 
-class DataRegisterRequest(BaseModel):
-    file_id: str
-    report_type: str | None = None
+@router.get("/stats")
+async def get_stats(db: AsyncSession = Depends(get_user_db)) -> ApiResponse[DataStatsOut]:
+    return ApiResponse.success(await data_service.get_stats(db))
 
 
-class DataRegisterResponse(BaseModel):
-    job_id: str
+@router.get("")
+async def list_raw_data(
+    q: str | None = None, db: AsyncSession = Depends(get_user_db)
+) -> ApiResponse[list[RawDataOut]]:
+    return ApiResponse.success(await data_service.list_raw_data(db, q))
 
 
-async def _run_analysis_pipeline(job_id: str, file_id: str) -> None:
-    # TODO: 원문 추출 -> Summary -> Chunk -> Embedding -> Report Skill 생성 (정책 문서 5.1)
-    # LangChain/LangGraph Agent 실행 및 Job 상태 갱신은 app/tasks, app/agents 에서 구현 예정
-    pass
-
-
-@router.post("/", dependencies=[Depends(get_current_token_payload)])
+@router.post("")
 async def register_data(
-    payload: DataRegisterRequest, background_tasks: BackgroundTasks
-) -> ApiResponse[DataRegisterResponse]:
-    job_id = str(uuid.uuid4())
+    payload: DataRegisterPayload, ctx: UserContext = Depends(get_user_context)
+) -> ApiResponse[RegisterResponse]:
+    try:
+        job_id = await data_service.register(ctx, payload)
+        return ApiResponse.success(RegisterResponse(job_id=job_id))
+    except NotFoundError as exc:
+        return ApiResponse.failure(str(exc))
 
-    # TODO: 데이터 등록 요청을 사용자 DB에 저장 후 Job 상태를 WAITING으로 기록
-    background_tasks.add_task(_run_analysis_pipeline, job_id, payload.file_id)
 
-    return ApiResponse.success(DataRegisterResponse(job_id=job_id))
+@router.get("/{data_id}")
+async def get_raw_data(
+    data_id: str, ctx: UserContext = Depends(get_user_context)
+) -> ApiResponse[RawDataDetailOut]:
+    try:
+        return ApiResponse.success(await data_service.get_raw_data(ctx, data_id))
+    except NotFoundError as exc:
+        return ApiResponse.failure(str(exc))
+
+
+@router.delete("/{data_id}")
+async def delete_raw_data(
+    data_id: str, ctx: UserContext = Depends(get_user_context)
+) -> ApiResponse[None]:
+    await data_service.delete_raw_data(ctx, data_id)
+    return ApiResponse.success(None)
+
+
+@router.post("/{data_id}/reanalyze")
+async def reanalyze(
+    data_id: str, ctx: UserContext = Depends(get_user_context)
+) -> ApiResponse[None]:
+    try:
+        await data_service.reanalyze(ctx, data_id)
+        return ApiResponse.success(None)
+    except NotFoundError as exc:
+        return ApiResponse.failure(str(exc))

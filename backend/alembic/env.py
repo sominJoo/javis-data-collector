@@ -12,7 +12,10 @@ from app.models.base import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # 앱과 같은 프로세스(startup lifespan)에서 alembic을 실행하므로, 기본값
+    # disable_existing_loggers=True는 이미 생성된 app.* 로거를 전부 비활성화한다.
+    # (마이그레이션 이후 app 로그가 콘솔에 안 찍히는 원인) → False로 유지한다.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
