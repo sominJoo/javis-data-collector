@@ -10,7 +10,7 @@ from app.core import deps
 from app.core.database import AsyncSessionLocal
 from app.core.deps import UserContext
 from app.core.user_db import UserDbParams, user_session
-from app.models.collector import AnalysisJob, AnalysisResult
+from app.models.collector import AnalysisJob
 from app.models.user_data import (
     ReportChunkData,
     ReportOriginData,
@@ -26,6 +26,7 @@ from app.schemas.data import (
     DataStatsOut,
     FileReviewOut,
     RawDataDetailOut,
+    RawDataListOut,
     RawDataOut,
 )
 from app.services import llm, pipeline_service, report_type_service
@@ -59,19 +60,6 @@ def _raw_out(od: ReportOriginData, code: str, name: str, chunk_count: int) -> Ra
         created_at=od.created_at,
         status="SUCCESS",
     )
-
-
-def _result_rows(origin_data_id: uuid.UUID, results: list[dict[str, Any]]) -> list[AnalysisResult]:
-    return [
-        AnalysisResult(
-            origin_data_id=origin_data_id,
-            type=r["type"],
-            title=r["title"],
-            preview=r.get("preview", ""),
-            content=r.get("content", ""),
-        )
-        for r in results
-    ]
 
 
 # ---------- register → 백그라운드 파이프라인 → staging job(운영 DB) ----------
@@ -303,13 +291,12 @@ async def save_data(ctx: UserContext, job_id: str) -> list[RawDataOut]:
     out: list[RawDataOut] = []
     for od, cnt, results in created:
         await db.refresh(od)
-        await _persist_skills(db, od.id, results)  # 사용자 DB: report_skill + 연결
-        ctx.collector.add_all(_result_rows(od.id, results))  # 분석 결과 → 운영 DB(기존 유지)
+        await _persist_skills(db, od.id, results)  # 사용자 DB: report_skill + 연결(분석 결과)
         out.append(_raw_out(od, job.report_type_code, rt_name, cnt))
 
     await db.commit()  # 사용자 DB: 스킬/연결 확정
     await ctx.collector.delete(job)
-    await ctx.collector.commit()  # 운영 DB: 결과 영속 + staging job 삭제
+    await ctx.collector.commit()  # 운영 DB: staging job 삭제
     return out
 
 
@@ -333,26 +320,60 @@ _ORIGIN_QUERY = (
 )
 
 
-async def list_raw_data(db: AsyncSession, query: str | None) -> list[RawDataOut]:
-    stmt = _ORIGIN_QUERY.order_by(ReportOriginData.created_at.desc())
+# 목록/카운트 공통 조인(제목 검색 + 유형 필터). count는 원본 기준 distinct로 집계한다.
+_COUNT_BASE = (
+    select(func.count(func.distinct(ReportOriginData.id)))
+    .select_from(ReportOriginData)
+    .outerjoin(
+        ReportTypeOriginDataMapping,
+        ReportTypeOriginDataMapping.report_origin_data_id == ReportOriginData.id,
+    )
+    .outerjoin(ReportType, ReportType.id == ReportTypeOriginDataMapping.report_type_id)
+)
+
+
+async def list_raw_data(
+    db: AsyncSession, query: str | None, report_type_code: str | None = None
+) -> RawDataListOut:
+    list_stmt = _ORIGIN_QUERY.order_by(ReportOriginData.created_at.desc())
+    count_stmt = _COUNT_BASE
     q = (query or "").strip()
     if q:
-        stmt = stmt.where(ReportOriginData.title.ilike(f"%{q}%"))
-    rows = (await db.execute(stmt)).all()
-    return [_raw_out(od, code or "", name or "", cnt) for od, code, name, cnt in rows]
+        cond = ReportOriginData.title.ilike(f"%{q}%")
+        list_stmt, count_stmt = list_stmt.where(cond), count_stmt.where(cond)
+    rtc = (report_type_code or "").strip()
+    if rtc:
+        cond = ReportType.code == rtc  # 매핑된 유형만(미매핑 원본 제외)
+        list_stmt, count_stmt = list_stmt.where(cond), count_stmt.where(cond)
+
+    total = await db.scalar(count_stmt) or 0
+    rows = (await db.execute(list_stmt)).all()
+    items = [_raw_out(od, code or "", name or "", cnt) for od, code, name, cnt in rows]
+    return RawDataListOut(total=total, items=items)
 
 
-async def _load_results(collector: AsyncSession, origin_data_id: uuid.UUID) -> list[AnalysisResultSchema]:
+async def _load_results(db: AsyncSession, origin_data_id: uuid.UUID) -> list[AnalysisResultSchema]:
+    """사용자 DB(data_collector)에서 이 원본에 연결된 분석 결과(스킬)를 조회한다.
+
+    분석 결과는 report_skill에 저장되고 report_origin_data_skill로 원본과 연결된다.
+    운영 DB(collector_service)에는 두지 않는다(사용자 DB 스키마만 사용).
+    """
     rows = (
-        await collector.scalars(
-            select(AnalysisResult)
-            .where(AnalysisResult.origin_data_id == origin_data_id)
-            .order_by(AnalysisResult.created_at)
+        await db.scalars(
+            select(ReportSkill)
+            .join(ReportOriginDataSkill, ReportOriginDataSkill.skill_id == ReportSkill.id)
+            .where(ReportOriginDataSkill.report_origin_data_id == origin_data_id)
+            .order_by(ReportOriginDataSkill.created_at, ReportSkill.type)
         )
     ).all()
     return [
-        AnalysisResultSchema(type=r.type, title=r.title, preview=r.preview, content=r.content)
-        for r in rows
+        AnalysisResultSchema(
+            type=s.type,
+            title=s.name,
+            preview=s.description or "",
+            content=s.content or "",
+        )
+        for s in rows
     ]
 
 
@@ -375,7 +396,7 @@ async def get_raw_data(ctx: UserContext, data_id: str) -> RawDataDetailOut:
         **_raw_out(od, code or "", name or "", cnt).model_dump(),
         summary=od.summary or "",
         chunks=[ChunkSchema(order=c.chunk_index, text=c.content) for c in chunks],
-        results=await _load_results(ctx.collector, od.id),  # 운영 DB에서 조회
+        results=await _load_results(db, od.id),  # 사용자 DB(data_collector)에서 조회
     )
 
 
@@ -404,11 +425,6 @@ async def delete_raw_data(ctx: UserContext, data_id: str) -> None:
         await db.execute(delete(ReportSkill).where(ReportSkill.id.in_(skill_ids)))
     await db.execute(delete(ReportOriginData).where(ReportOriginData.id == rid))
     await db.commit()
-    # 운영 DB: 분석 결과 제거
-    await ctx.collector.execute(
-        delete(AnalysisResult).where(AnalysisResult.origin_data_id == rid)
-    )
-    await ctx.collector.commit()
 
 
 async def get_stats(db: AsyncSession) -> DataStatsOut:
@@ -496,10 +512,3 @@ async def reanalyze(ctx: UserContext, data_id: str) -> None:
     await db.flush()
     await _persist_skills(db, od.id, f.get("results", []))
     await db.commit()
-
-    # 운영 DB: 분석 결과 교체
-    await ctx.collector.execute(
-        delete(AnalysisResult).where(AnalysisResult.origin_data_id == od.id)
-    )
-    ctx.collector.add_all(_result_rows(od.id, f.get("results", [])))
-    await ctx.collector.commit()

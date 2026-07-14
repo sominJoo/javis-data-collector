@@ -205,25 +205,51 @@ def build_outline(md: str) -> str:
         end = heads[k + 1][0] if k + 1 < n else len(lines)
         return body_len(heads[k][0], end)
 
+    # 헤딩별 마커를 미리 파싱한다(FLAT 백본 판정에 필요).
+    markers = [_parse_marker(t) for (_i, _l, t) in heads]
+
+    # --- FLAT 백본 판정 ---
+    # 단일번호(1.,2.,3.…)가 1부터 연속이고(반복·건너뜀 없음) 대시 계층이 얕으면
+    # (X-Y까지, X-Y-Z 없음), 이 단일번호들을 실제 최상위 섹션(d0)으로 인정한다.
+    # → 구매품의서형 평면 섹션(기본정보/구매항목/결재선처럼 자식 없는 섹션)이 보존된다.
+    # 계층형 본문의 번호나열 노이즈는 대개 단일번호가 반복되거나(요약+본문에서 1. 재등장)
+    # 깊은 대시(1-2-1.)와 공존하므로 이 조건에서 배제된다 → 기존 HIER 동작 회귀 없음.
+    single_seq = [val[0] for kind, val in markers if kind == "single"]
+    max_dash_len = max((len(val) for kind, val in markers if kind == "dash"), default=0)
+    has_repeat = len(single_seq) != len(set(single_seq))
+    flat_backbone: set[int] = set()
+    if single_seq and not has_repeat and max_dash_len <= 2:
+        exp = 1
+        for v in single_seq:
+            if v == exp:
+                flat_backbone.add(v)
+                exp += 1
+
     # 숫자 경로로 트리를 재구성한다. 대시(1-1.)는 절대 경로, (1)/①/N차년도는 부모 경로 +
-    # 오프셋 상대번호. 단일번호(1.)는 구조 노드로 쓰지 않고 '장 제목 사전'으로만 사용해
-    # 본문·요약의 번호 나열 노이즈를 구조에서 배제한다.
+    # 오프셋 상대번호. 단일번호(1.)는 원칙적으로 '장 제목 사전'으로만 쓰되(요약·본문 번호
+    # 나열 노이즈 배제), FLAT 백본에 속하면 자식이 없어도 d0 섹션 노드로 승격한다.
     single_titles: dict[int, str] = {}
     path_node: dict[tuple, dict] = {}  # 같은 경로 중복 시 마지막(본문) 발생이 우선
     stack: list[tuple[int, tuple]] = []  # (heading_level, path)
     for k, (idx, level, title) in enumerate(heads):
-        kind, val = _parse_marker(title)
+        kind, val = markers[k]
         while stack and stack[-1][0] >= level:
             stack.pop()
         parent = stack[-1][1] if stack else ()
         if kind == "single":
+            num = val[0]
             # 진짜 장 제목만 채택: 바로 다음 헤딩이 접두번호가 일치하는 대시 자식일 때만.
-            # (요약·본문의 번호 나열 "1. …"은 뒤에 "1-1."이 오지 않으므로 배제된다.)
             if k + 1 < n:
-                nkind, nval = _parse_marker(heads[k + 1][2])
-                if nkind == "dash" and nval[0] == val[0]:
-                    single_titles.setdefault(val[0], title)
-            # 단일번호는 부모 스택에 넣지 않는다 → (1)/① 등 상대 마커가 실제 대시 조상에 붙는다.
+                nkind, nval = markers[k + 1]
+                if nkind == "dash" and nval[0] == num:
+                    single_titles.setdefault(num, title)
+            if num in flat_backbone:
+                # FLAT 최상위 섹션: 자식이 없어도 d0 리프로 등록(대시 자식이 뒤에 오면
+                # subtree 계산에서 자연히 합산됨). 부모 스택에도 올려 (1)/① 상대 마커가 붙게 한다.
+                path = (num,)
+                stack.append((level, path))
+                path_node[path] = {"title": title, "dbody": direct_body(k), "kind": "single"}
+            # 백본이 아닌 단일번호(노이즈/요약 나열)는 구조에 넣지 않는다.
             continue
         if kind == "dash":
             path = val

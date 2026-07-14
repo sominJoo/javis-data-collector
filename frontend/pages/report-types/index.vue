@@ -52,7 +52,7 @@ onMounted(load);
         class="gx-row trow"
         @click="navigateTo(`/report-types/${t.code}`)"
       >
-        <div><span class="code">{{ t.code }}</span></div>
+        <div class="code-cell"><span class="code">{{ t.code }}</span></div>
         <div class="name">{{ t.name }}</div>
         <div class="desc">{{ t.description }}</div>
         <div class="mono">{{ fmtDate(t.updatedAt) }}</div>
@@ -138,7 +138,17 @@ h3 {
   cursor: pointer;
   transition: background 0.12s;
 }
+.code-cell {
+  min-width: 0;
+  padding-right: 12px;
+}
 .code {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
   font-family: ui-monospace, monospace;
   font-size: 11.5px;
   font-weight: 700;

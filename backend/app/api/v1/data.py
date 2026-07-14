@@ -7,7 +7,7 @@ from app.schemas.data import (
     DataRegisterPayload,
     DataStatsOut,
     RawDataDetailOut,
-    RawDataOut,
+    RawDataListOut,
     RegisterResponse,
 )
 from app.services import data_service
@@ -23,9 +23,11 @@ async def get_stats(db: AsyncSession = Depends(get_user_db)) -> ApiResponse[Data
 
 @router.get("")
 async def list_raw_data(
-    q: str | None = None, db: AsyncSession = Depends(get_user_db)
-) -> ApiResponse[list[RawDataOut]]:
-    return ApiResponse.success(await data_service.list_raw_data(db, q))
+    q: str | None = None,
+    report_type_code: str | None = None,
+    db: AsyncSession = Depends(get_user_db),
+) -> ApiResponse[RawDataListOut]:
+    return ApiResponse.success(await data_service.list_raw_data(db, q, report_type_code))
 
 
 @router.post("")

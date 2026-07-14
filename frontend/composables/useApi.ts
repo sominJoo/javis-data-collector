@@ -9,6 +9,7 @@ import type {
   JobProgress,
   RawData,
   RawDataDetail,
+  RawDataList,
   ReportType,
   Session,
   UploadedFile,
@@ -19,7 +20,7 @@ export interface DataCollectorApi {
   login(apiKey: string): Promise<Session>;
   adminLogin(id: string, password: string): Promise<Session>;
   getStats(): Promise<DataStats>;
-  listRawData(query?: string): Promise<RawData[]>;
+  listRawData(query?: string, reportTypeCode?: string): Promise<RawDataList>;
   getRawData(id: string): Promise<RawDataDetail>;
   deleteRawData(id: string): Promise<void>;
   uploadFile(file: File): Promise<{ fileId: string }>;
@@ -104,7 +105,10 @@ function createHttpApi(baseUrl: string): DataCollectorApi {
     adminLogin: (id, password) =>
       req<Session>("/auth/admin-login", { method: "POST", body: { id, password } }),
     getStats: () => req<DataStats>("/data/stats"),
-    listRawData: (query) => req<RawData[]>("/data", { query: { q: query } }),
+    listRawData: (query, reportTypeCode) =>
+      req<RawDataList>("/data", {
+        query: { q: query || undefined, report_type_code: reportTypeCode || undefined },
+      }),
     getRawData: (id) => req<RawDataDetail>(`/data/${id}`),
     deleteRawData: (id) => req<void>(`/data/${id}`, { method: "DELETE" }),
     uploadFile: (file) => {

@@ -46,6 +46,11 @@ class RawDataOut(CamelModel):
     status: str
 
 
+class RawDataListOut(CamelModel):
+    total: int  # 현재 필터·검색 조건에 해당하는 전체 건수(페이지네이션 대비)
+    items: list[RawDataOut] = []
+
+
 class RawDataDetailOut(RawDataOut):
     summary: str = ""
     chunks: list[ChunkSchema] = []

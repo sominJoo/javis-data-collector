@@ -19,6 +19,12 @@ export interface RawData {
   status: JobStatus;
 }
 
+// 목록 조회 응답. total은 현재 필터·검색 조건의 전체 건수(페이지네이션 대비).
+export interface RawDataList {
+  total: number;
+  items: RawData[];
+}
+
 // 상단 통계
 export interface DataStats {
   total: number;
