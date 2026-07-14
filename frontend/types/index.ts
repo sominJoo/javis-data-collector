@@ -95,16 +95,24 @@ export function blankSkills(): ReportSkill[] {
 }
 
 // LLM / Embedding 설정 (API Key에 귀속)
+// kind: "LOCAL"(자격 불필요) | "CLOUD"(시크릿 필요)
+// secret: 입력 전용(저장 후 응답에는 미포함). hasSecret: 저장된 시크릿 존재 여부(표시용)
 export interface LlmConfig {
   provider: string;
   endpoint: string;
   model: string;
+  kind: "LOCAL" | "CLOUD";
+  secret?: string;
+  hasSecret?: boolean;
 }
 
 export interface EmbeddingConfig {
   provider: string;
   endpoint: string;
   model: string;
+  kind: "LOCAL" | "CLOUD";
+  secret?: string;
+  hasSecret?: boolean;
 }
 
 // 사용자 DB 연결정보 (정책 문서 2장)

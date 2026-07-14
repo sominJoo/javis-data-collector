@@ -7,12 +7,18 @@ class LlmConfigSchema(CamelModel):
     provider: str = "openai"
     endpoint: str
     model: str
+    kind: str = "CLOUD"  # LOCAL(자격 불필요) | CLOUD(시크릿 필요)
+    secret: str | None = None  # 입력 전용. 빈값이면 수정 시 기존값 유지. 출력에는 미포함
+    has_secret: bool = False  # 출력 전용. 저장된 시크릿 존재 여부(UI 표시용)
 
 
 class EmbeddingConfigSchema(CamelModel):
     provider: str = "openai"
     endpoint: str
     model: str
+    kind: str = "CLOUD"  # LOCAL(자격 불필요) | CLOUD(시크릿 필요)
+    secret: str | None = None  # 입력 전용. 빈값이면 수정 시 기존값 유지. 출력에는 미포함
+    has_secret: bool = False  # 출력 전용. 저장된 시크릿 존재 여부(UI 표시용)
 
 
 class DbConnectionSchema(CamelModel):

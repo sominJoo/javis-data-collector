@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.document_analysis_agent import document_analysis_agent
 from app.core import crypto
 from app.core.config import get_settings
-from app.models.collector import CollectorApiKey
+from app.models.collector import LLM_KIND_LOCAL, CollectorApiKey
 from app.schemas.data import UploadedFileSchema
 from app.services import file_service
 from app.services.llm import EmbeddingSpec, LlmSpec
@@ -27,7 +27,9 @@ ProgressCallback = Callable[[int, str, str], Awaitable[None]]
 def llm_spec(api_key: CollectorApiKey) -> LlmSpec:
     cfg = api_key.llm
     secret = crypto.decrypt(cfg.secret_encrypted) if cfg.secret_encrypted else None
-    return LlmSpec(endpoint=cfg.endpoint, model=cfg.model, secret=secret)
+    return LlmSpec(
+        endpoint=cfg.endpoint, model=cfg.model, secret=secret, local=cfg.kind == LLM_KIND_LOCAL
+    )
 
 
 def embed_spec(api_key: CollectorApiKey) -> EmbeddingSpec:
@@ -36,7 +38,11 @@ def embed_spec(api_key: CollectorApiKey) -> EmbeddingSpec:
     # per-key 모델 우선, 없으면 전역 EMBEDDING_MODEL로 fallback.
     model = cfg.model or get_settings().embedding_model
     return EmbeddingSpec(
-        endpoint=cfg.endpoint, model=model, dimension=cfg.dimension, secret=secret
+        endpoint=cfg.endpoint,
+        model=model,
+        dimension=cfg.dimension,
+        secret=secret,
+        local=cfg.kind == LLM_KIND_LOCAL,
     )
 
 

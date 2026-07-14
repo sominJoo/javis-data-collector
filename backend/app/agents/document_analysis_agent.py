@@ -71,7 +71,7 @@ class DocumentAnalysisAgent:
         # 원문 확보 실패. 실제 LLM 모드에서는 placeholder를 원문인 것처럼 넘기면
         # 실제 문서가 아닌 가짜 텍스트로 스킬(목차 등)이 생성되므로 명시적으로 실패시킨다.
         spec: LlmSpec = state["llm"]
-        if not llm._use_stub(spec.secret):
+        if not llm._use_stub(spec):
             raise RuntimeError(
                 f"원문을 확보하지 못했습니다 (file={name}). "
                 "파일 경로와 파싱 상태를 확인하세요. "
@@ -90,7 +90,7 @@ class DocumentAnalysisAgent:
     async def _summary_node(self, state: FileState) -> dict[str, Any]:
         text = state.get("text", "")
         spec: LlmSpec = state["llm"]
-        if llm._use_stub(spec.secret):
+        if llm._use_stub(spec):
             summary = f"{state['file_name']} 문서의 핵심 내용을 요약한 결과입니다. 주요 주제와 결론을 담고 있습니다."
             return {"summary": summary, "reporter": ""}
         # summary는 중요 산출물이 아니므로 전체 요약 대신 앞부분만 예산 내로 잘라 1회 호출한다.
@@ -149,7 +149,7 @@ class DocumentAnalysisAgent:
 
     async def _extract_keywords(self, text: str, spec: LlmSpec) -> list[str]:
         """청크 텍스트에서 핵심 키워드를 추출한다(전문검색 C가중치용)."""
-        if llm._use_stub(spec.secret):
+        if llm._use_stub(spec):
             # 결정적: 2글자 이상 토큰을 등장 순서대로 중복 제거해 상위 5개.
             seen: list[str] = []
             for tok in re.findall(r"[0-9A-Za-z가-힣]{2,}", text):
@@ -174,7 +174,7 @@ class DocumentAnalysisAgent:
         title = state.get("title", "")
         report_type_name = state.get("report_type_name", "")
         report_type_detail = state.get("report_type_detail", "")
-        use_stub = llm._use_stub(spec.secret)
+        use_stub = llm._use_stub(spec)
 
         results: list[dict[str, Any]] = [
             {
