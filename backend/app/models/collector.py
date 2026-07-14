@@ -24,6 +24,10 @@ def _fk(target: str) -> str:
 API_KEY_ACTIVE = "ACTIVE"
 API_KEY_DISABLED = "DISABLED"
 
+# LLM/Embedding 연결 종류 — LOCAL: 자격 불필요(사내/로컬), CLOUD: 상용(시크릿 필요)
+LLM_KIND_LOCAL = "LOCAL"
+LLM_KIND_CLOUD = "CLOUD"
+
 
 class AdminAccount(UuidPkMixin, TimestampMixin, Base):
     __tablename__ = "admin_account"
@@ -67,6 +71,8 @@ class ApiKeyLlmConfig(UuidPkMixin, TimestampMixin, Base):
     endpoint: Mapped[str] = mapped_column(String(500))
     model: Mapped[str] = mapped_column(String(200))
     secret_encrypted: Mapped[str | None] = mapped_column(String, nullable=True)
+    # LOCAL: 사내/로컬 LLM(자격 불필요) · CLOUD: 상용 LLM(시크릿 필요)
+    kind: Mapped[str] = mapped_column(String(20), default=LLM_KIND_CLOUD, server_default=LLM_KIND_CLOUD)
 
     api_key: Mapped[CollectorApiKey] = relationship(back_populates="llm")
 
@@ -83,6 +89,8 @@ class ApiKeyEmbeddingConfig(UuidPkMixin, TimestampMixin, Base):
     model: Mapped[str] = mapped_column(String(200))
     secret_encrypted: Mapped[str | None] = mapped_column(String, nullable=True)
     dimension: Mapped[int] = mapped_column(Integer, default=1536, server_default="1536")
+    # LOCAL: 사내/로컬 임베딩(자격 불필요) · CLOUD: 상용(시크릿 필요)
+    kind: Mapped[str] = mapped_column(String(20), default=LLM_KIND_CLOUD, server_default=LLM_KIND_CLOUD)
 
     api_key: Mapped[CollectorApiKey] = relationship(back_populates="embedding")
 

@@ -20,6 +20,7 @@ class LlmSpec:
     endpoint: str
     model: str
     secret: str | None = None
+    local: bool = False  # 로컬 LLM(자격 불필요): secret 없이도 실제 호출
 
 
 @dataclass
@@ -28,6 +29,7 @@ class EmbeddingSpec:
     model: str
     dimension: int = 1536
     secret: str | None = None
+    local: bool = False  # 로컬 임베딩(자격 불필요)
 
 
 def _effective_secret(secret: str | None) -> str | None:
@@ -35,18 +37,34 @@ def _effective_secret(secret: str | None) -> str | None:
     return secret or get_settings().openai_api_key
 
 
-def _use_stub(secret: str | None) -> bool:
-    return get_settings().llm_stub_mode or not _effective_secret(secret)
+def _use_stub(spec: "LlmSpec | EmbeddingSpec") -> bool:
+    """stub 사용 여부.
+
+    - `LLM_STUB_MODE=true`면 항상 stub.
+    - 로컬(local=True)은 자격이 없어도 실제 엔드포인트를 호출한다(stub 아님).
+    - 상용(local=False)은 유효한 secret(per-key 또는 전역)이 없으면 stub.
+    """
+    if get_settings().llm_stub_mode:
+        return True
+    if getattr(spec, "local", False):
+        return False
+    return not _effective_secret(spec.secret)
+
+
+def _call_api_key(spec: "LlmSpec | EmbeddingSpec") -> str:
+    """실제 호출에 쓸 api_key. 로컬 서버는 자격이 없을 수 있으므로 더미로 채운다
+    (OpenAI 호환 서버/클라이언트가 비어있는 키를 거부하는 것을 방지)."""
+    return _effective_secret(spec.secret) or "EMPTY"
 
 
 async def complete(prompt: str, spec: LlmSpec) -> str:
-    if _use_stub(spec.secret):
+    if _use_stub(spec):
         return f"[stub:{spec.model}]\n{prompt.strip()[:400]}"
     from langchain_openai import ChatOpenAI
 
     llm = ChatOpenAI(
         base_url=spec.endpoint,
-        api_key=_effective_secret(spec.secret),
+        api_key=_call_api_key(spec),
         model=spec.model,
         temperature=0.2,
         # extra_body={"chat_template_kwargs": {"enable_thinking": False}},  # ← 추론 OFF  
@@ -90,7 +108,7 @@ def clip_for_prompt(document: str, reserve_tokens: int = 0) -> str:
 
 
 async def embed(texts: list[str], spec: EmbeddingSpec) -> list[list[float]]:
-    if _use_stub(spec.secret):
+    if _use_stub(spec):
         # 결정적 pseudo-embedding: 텍스트 해시 기반. 실제 유사도 의미는 없고 파이프라인 검증용.
         import hashlib
 
@@ -104,6 +122,6 @@ async def embed(texts: list[str], spec: EmbeddingSpec) -> list[list[float]]:
     from langchain_openai import OpenAIEmbeddings
 
     client = OpenAIEmbeddings(
-        base_url=spec.endpoint, api_key=_effective_secret(spec.secret), model=spec.model
+        base_url=spec.endpoint, api_key=_call_api_key(spec), model=spec.model
     )
     return await client.aembed_documents(texts)

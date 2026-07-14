@@ -53,11 +53,19 @@ function blankKey(): ApiKey {
     active: true,
     expireAt: "2026-12-31T23:59:59Z",
     lastUsedAt: null,
-    llm: { provider: "openai", endpoint: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+    llm: {
+      provider: "openai",
+      endpoint: "https://api.openai.com/v1",
+      model: "gpt-4o-mini",
+      kind: "CLOUD",
+      secret: "",
+    },
     embedding: {
       provider: "openai",
       endpoint: "https://api.openai.com/v1",
       model: "text-embedding-3-small",
+      kind: "CLOUD",
+      secret: "",
     },
     dbConnections: [],
   };
@@ -83,6 +91,9 @@ function openCreate() {
 function openEdit(key: ApiKey) {
   editingNew.value = false;
   form.value = JSON.parse(JSON.stringify(key));
+  // 시크릿은 응답에 담겨오지 않는다. 입력 바인딩용으로 빈값 초기화(빈값=기존값 유지).
+  form.value.llm.secret = "";
+  form.value.embedding.secret = "";
   keyModalOpen.value = true;
 }
 async function saveKey() {
@@ -276,15 +287,49 @@ onMounted(load);
         </div>
 
         <div class="section-label">LLM 설정</div>
+        <div class="fg">
+          <label>연결 종류</label>
+          <select v-model="form.llm.kind" class="input">
+            <option value="LOCAL">로컬 LLM (사내/자체 · API Key 불필요)</option>
+            <option value="CLOUD">상용 LLM (OpenAI 등 · API Key 필요)</option>
+          </select>
+        </div>
         <div class="fg2">
           <input v-model="form.llm.endpoint" class="input" placeholder="Endpoint" />
           <input v-model="form.llm.model" class="input" placeholder="Model" />
         </div>
+        <div v-if="form.llm.kind === 'CLOUD'" class="fg">
+          <label>API Key (시크릿)</label>
+          <input
+            v-model="form.llm.secret"
+            type="password"
+            class="input"
+            autocomplete="new-password"
+            :placeholder="form.llm.hasSecret ? '저장됨 — 변경 시에만 입력' : 'sk-...'"
+          />
+        </div>
 
         <div class="section-label">Embedding 설정</div>
+        <div class="fg">
+          <label>연결 종류</label>
+          <select v-model="form.embedding.kind" class="input">
+            <option value="LOCAL">로컬 (사내/자체 · API Key 불필요)</option>
+            <option value="CLOUD">상용 (OpenAI 등 · API Key 필요)</option>
+          </select>
+        </div>
         <div class="fg2">
           <input v-model="form.embedding.endpoint" class="input" placeholder="Endpoint" />
           <input v-model="form.embedding.model" class="input" placeholder="Model" />
+        </div>
+        <div v-if="form.embedding.kind === 'CLOUD'" class="fg">
+          <label>API Key (시크릿)</label>
+          <input
+            v-model="form.embedding.secret"
+            type="password"
+            class="input"
+            autocomplete="new-password"
+            :placeholder="form.embedding.hasSecret ? '저장됨 — 변경 시에만 입력' : 'sk-...'"
+          />
         </div>
 
         <div class="section-label db-head">

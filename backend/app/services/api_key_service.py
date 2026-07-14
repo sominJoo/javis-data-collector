@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import crypto
 from app.core.security import generate_api_key, hash_api_key, mask_api_key
 from app.models.collector import (
     API_KEY_ACTIVE,
@@ -30,6 +31,12 @@ def _identity(host: str, port: int, database: str, username: str) -> str:
     return f"{username}@{host}:{port}/{database}"
 
 
+def _enc_secret(raw: str | None) -> str | None:
+    """평문 시크릿을 암호화. 빈값이면 None(미저장)."""
+    raw = (raw or "").strip()
+    return crypto.encrypt(raw) if raw else None
+
+
 def _to_out(key: CollectorApiKey) -> ApiKeyOut:
     return ApiKeyOut(
         id=str(key.id),
@@ -39,12 +46,18 @@ def _to_out(key: CollectorApiKey) -> ApiKeyOut:
         expire_at=key.expired_at,
         last_used_at=key.last_used_at,
         llm=LlmConfigSchema(
-            provider=key.llm.provider, endpoint=key.llm.endpoint, model=key.llm.model
+            provider=key.llm.provider,
+            endpoint=key.llm.endpoint,
+            model=key.llm.model,
+            kind=key.llm.kind,
+            has_secret=bool(key.llm.secret_encrypted),  # secret 값 자체는 응답에 담지 않음
         ),
         embedding=EmbeddingConfigSchema(
             provider=key.embedding.provider,
             endpoint=key.embedding.endpoint,
             model=key.embedding.model,
+            kind=key.embedding.kind,
+            has_secret=bool(key.embedding.secret_encrypted),
         ),
         db_connections=[
             DbConnectionSchema(
@@ -115,12 +128,18 @@ async def create_api_key(db: AsyncSession, payload: ApiKeyIn) -> ApiKeyOut:
         expired_at=payload.expire_at,
     )
     key.llm = ApiKeyLlmConfig(
-        provider=payload.llm.provider, endpoint=payload.llm.endpoint, model=payload.llm.model
+        provider=payload.llm.provider,
+        endpoint=payload.llm.endpoint,
+        model=payload.llm.model,
+        kind=payload.llm.kind,
+        secret_encrypted=_enc_secret(payload.llm.secret),
     )
     key.embedding = ApiKeyEmbeddingConfig(
         provider=payload.embedding.provider,
         endpoint=payload.embedding.endpoint,
         model=payload.embedding.model,
+        kind=payload.embedding.kind,
+        secret_encrypted=_enc_secret(payload.embedding.secret),
     )
     for c in payload.db_connections:
         key.db_connections.append(_build_connection(c))
@@ -141,9 +160,16 @@ async def update_api_key(db: AsyncSession, key_id: str, payload: ApiKeyIn) -> Ap
     key.llm.provider = payload.llm.provider
     key.llm.endpoint = payload.llm.endpoint
     key.llm.model = payload.llm.model
+    key.llm.kind = payload.llm.kind
+    # 시크릿은 입력이 있을 때만 교체(빈값이면 기존값 유지 — DB 비밀번호와 동일 패턴)
+    if (payload.llm.secret or "").strip():
+        key.llm.secret_encrypted = _enc_secret(payload.llm.secret)
     key.embedding.provider = payload.embedding.provider
     key.embedding.endpoint = payload.embedding.endpoint
     key.embedding.model = payload.embedding.model
+    key.embedding.kind = payload.embedding.kind
+    if (payload.embedding.secret or "").strip():
+        key.embedding.secret_encrypted = _enc_secret(payload.embedding.secret)
 
     existing_pw = {
         _identity(c.host, c.port, c.database, c.username): c.password_encrypted
