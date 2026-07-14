@@ -7,18 +7,4 @@
         "**/.idea": true,
         "**/process.pid": true
     },
-    "sqltools.connections": [
-        {
-            "ssh": "Disabled",
-            "previewLimit": 50,
-            "server": "192.168.109.254",
-            "port": 31032,
-            "driver": "PostgreSQL",
-            "name": "Javis",
-            "group": "Agent",
-            "database": "auto_news_db",
-            "username": "root",
-            "password": "biris.manse"
-        }
-    ]
 }
