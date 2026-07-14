@@ -10,7 +10,9 @@
 #     1) python / node 등 사전 도구 확인
 #     2) backend Python 환경 구성 + 의존성 설치 (conda 또는 venv)
 #     3) frontend 의존성 설치 + 빌드 (nuxt build → .output)
-#     4) backend/.env · frontend/.env 생성 (JWT/ENCRYPTION 시크릿 자동 생성)
+#     4) backend/.env · frontend/.env 생성
+#        (JWT_SECRET 은 항상 새로 생성. ENCRYPTION_KEY 는 기존 DB 재사용 시
+#         그때 쓰던 키를 입력받아 유지, 신규면 새로 생성)
 #     5) 실행 정보 기록 (.run/env.conf) — javis 가 서버 실행에 사용
 #     6) javis 실행 권한 부여
 #
@@ -95,19 +97,52 @@ log "frontend 의존성 설치 및 빌드 (nuxt build)..."
 ok "frontend 빌드 완료 (.output)"
 
 # ── 5) .env 생성 (+ 시크릿 자동 생성) ───────────────────────
+# 입력받은 문자열이 유효한 Fernet 키(urlsafe base64 32바이트)인지 검증.
+_is_valid_fernet() {
+  FERNET_CANDIDATE="$1" "$PYTHON_BIN" - <<'PY' 2>/dev/null
+import os
+from cryptography.fernet import Fernet
+Fernet(os.environ["FERNET_CANDIDATE"].encode())
+PY
+}
+
+# ENCRYPTION_KEY 결정.
+#   기존 데이터(암호화된 DB 비밀번호 등)가 있는 DB를 계속 쓰면, 그때 쓰던 키를
+#   그대로 넣어야 기존 암호값을 복호화할 수 있다. 키가 바뀌면 복호화 불가(InvalidToken).
+#   결과 키는 화면에 출력하지 않고 전역 RESOLVED_FERNET 에 담는다.
+resolve_encryption_key() {
+  local reuse fernet
+  read -rp "이전에 사용하던 DB(암호화된 데이터 포함)를 계속 사용하나요? [y/N]: " reuse
+  if [ "$reuse" = y ] || [ "$reuse" = Y ]; then
+    while :; do
+      # 시크릿이므로 입력값을 화면에 표시하지 않는다(-s).
+      read -rsp "그때 사용하던 ENCRYPTION_KEY 를 입력하세요: " fernet; printf '\n'
+      if [ -n "$fernet" ] && _is_valid_fernet "$fernet"; then
+        ok "기존 ENCRYPTION_KEY 사용 (기존 데이터 복호화 유지)"
+        break
+      fi
+      err "유효한 Fernet 키가 아닙니다. 다시 입력하세요. (Ctrl-C 로 중단)"
+    done
+  else
+    fernet="$("$PYTHON_BIN" -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
+    ok "새 ENCRYPTION_KEY 생성"
+  fi
+  RESOLVED_FERNET="$fernet"
+}
+
 create_backend_env() {
   if [ -f backend/.env ]; then
     read -rp "backend/.env 가 이미 있습니다. 덮어쓸까요? [y/N]: " ow
     { [ "$ow" = y ] || [ "$ow" = Y ]; } || { log "backend/.env 유지"; return; }
   fi
   cp backend/.env.example backend/.env
-  local jwt fernet
-  jwt="$(openssl rand -hex 32)"
-  fernet="$("$PYTHON_BIN" -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
-  sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=${jwt}|"          backend/.env
-  sed -i.bak "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=${fernet}|" backend/.env
+  local jwt
+  jwt="$(openssl rand -hex 32)"          # JWT_SECRET 은 데이터와 무관 → 항상 새로 생성(재로그인만 필요)
+  resolve_encryption_key                 # → RESOLVED_FERNET
+  sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=${jwt}|"                    backend/.env
+  sed -i.bak "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=${RESOLVED_FERNET}|" backend/.env
   rm -f backend/.env.bak
-  ok "backend/.env 생성 (JWT/ENCRYPTION 시크릿 자동 생성)"
+  ok "backend/.env 생성 완료"
 }
 
 create_frontend_env() {

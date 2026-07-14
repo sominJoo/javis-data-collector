@@ -30,6 +30,13 @@ def _timestamps() -> list[sa.Column]:
 
 
 def upgrade() -> None:
+    # 이미 이 마이그레이션의 테이블이 존재하면 재생성하지 않는다.
+    # 0002 테이블은 한 트랜잭션에서 원자적으로 생성되므로 admin_account 존재 여부를
+    # 대표 지표로 삼는다. (버전 기록만 유실된 드리프트 등에서 재실행 시 충돌 방지)
+    inspector = sa.inspect(op.get_bind())
+    if inspector.has_table("admin_account", schema=SCHEMA):
+        return
+
     op.create_table(
         "admin_account",
         sa.Column("id", _UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
