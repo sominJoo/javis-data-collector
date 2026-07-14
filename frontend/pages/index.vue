@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DataStats, RawData } from "~/types";
+import type { RawData, ReportType } from "~/types";
 
 const api = useApi();
 const crumb = useCrumb();
@@ -7,21 +7,31 @@ const confirm = useConfirm();
 const toast = useToast();
 crumb.value = "원본 데이터";
 
-const stats = ref<DataStats>({ total: 0, done: 0, ing: 0, chunks: 0 });
 const rows = ref<RawData[]>([]);
+const total = ref(0); // 현재 필터·검색 조건의 전체 건수(API 제공)
+const reportTypes = ref<ReportType[]>([]);
 const query = ref("");
+const typeCode = ref(""); // 보고서 유형 필터("" = 전체)
 const loading = ref(false);
 const refreshing = ref(false);
 
 async function load() {
   loading.value = true;
   try {
-    [stats.value, rows.value] = await Promise.all([
-      api.getStats(),
-      api.listRawData(query.value),
-    ]);
+    const res = await api.listRawData(query.value, typeCode.value);
+    rows.value = res.items;
+    total.value = res.total;
   } finally {
     loading.value = false;
+  }
+}
+
+// 유형 필터 목록은 최초 1회만 조회한다(자주 변하지 않음).
+async function loadReportTypes() {
+  try {
+    reportTypes.value = await api.listReportTypes();
+  } catch {
+    reportTypes.value = [];
   }
 }
 
@@ -39,6 +49,7 @@ watch(query, () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(load, 250);
 });
+watch(typeCode, load); // 유형 선택 즉시 재조회
 
 async function removeRow(id: string) {
   const ok = await confirm({
@@ -62,7 +73,10 @@ function fmtDate(iso: string): string {
   return iso.slice(0, 10);
 }
 
-onMounted(load);
+onMounted(() => {
+  loadReportTypes();
+  load();
+});
 </script>
 
 <template>
@@ -70,8 +84,17 @@ onMounted(load);
     <!-- 헤더 -->
     <div class="head">
       <h3>원본 데이터</h3>
-      <span class="count">{{ stats.total }}건</span>
+      <span class="count">{{ total }}건</span>
       <div class="actions">
+        <div class="filter">
+          <select v-model="typeCode" aria-label="보고서 유형 필터">
+            <option value="">전체 유형</option>
+            <option v-for="t in reportTypes" :key="t.code" :value="t.code">{{ t.name }}</option>
+          </select>
+          <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9c99ab" stroke-width="2">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </div>
         <div class="search">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9c99ab" stroke-width="2">
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
@@ -157,6 +180,30 @@ h3 {
   margin-left: auto;
   display: flex;
   gap: 10px;
+}
+.filter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  select {
+    appearance: none;
+    height: 40px;
+    padding: 0 34px 0 14px;
+    border-radius: 10px;
+    background: var(--panel);
+    border: 1px solid var(--line2);
+    color: var(--tx);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    max-width: 200px;
+  }
+  .chev {
+    position: absolute;
+    right: 12px;
+    pointer-events: none;
+  }
 }
 .search {
   display: flex;

@@ -40,6 +40,13 @@ const allSkillsDone = computed(() => skillDone.value === skillTotal.value);
 const selectedSkill = computed(() =>
   selSkillIdx.value != null ? form.value.skills[selSkillIdx.value] : null,
 );
+// 선택된 스킬 내용을 UI에서 직접 편집 가능하도록 하는 writable computed
+const editContent = computed({
+  get: () => selectedSkill.value?.content ?? "",
+  set: (v: string) => {
+    if (selSkillIdx.value != null) form.value.skills[selSkillIdx.value].content = v;
+  },
+});
 
 function selectSkill(i: number) {
   if (form.value.skills[i].status !== "none") selSkillIdx.value = i;
@@ -47,7 +54,7 @@ function selectSkill(i: number) {
 async function generateSkill(i: number) {
   genLoadingIdx.value = i;
   try {
-    const content = await api.generateSkill(form.value.skills[i].name);
+    const content = await api.generateSkill(form.value.skills[i].skillType, form.value);
     form.value.skills[i] = { ...form.value.skills[i], status: "gen", content };
     selSkillIdx.value = i;
   } finally {
@@ -213,24 +220,6 @@ onMounted(async () => {
             accept=".txt,.md,.yaml,.yml,.json"
             @change="onSkillFileChosen"
           />
-
-          <div class="skill-preview">
-            <template v-if="selectedSkill?.content">
-              <div class="sp-head">
-                <span class="sp-name">{{ selectedSkill.name }}</span>
-                <span class="sp-tag" :class="selectedSkill.status">
-                  {{ selectedSkill.status === "uploaded" ? "업로드" : "자동 생성" }}
-                </span>
-              </div>
-              <pre class="sp-body">{{ selectedSkill.content }}</pre>
-            </template>
-            <div v-else class="sp-empty">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" />
-              </svg>
-              <span>스킬을 자동 생성/업로드한 뒤<br />해당 스킬을 클릭하면 내용이 여기에 표시됩니다.</span>
-            </div>
-          </div>
         </div>
 
         <!-- 상태는 수정 시에만 노출. 신규 등록은 무조건 활성으로 생성된다. -->
@@ -243,6 +232,26 @@ onMounted(async () => {
         </div>
 
         <div v-if="error" class="err">{{ error }}</div>
+      </div>
+    </div>
+
+    <!-- 스킬 내용: 하단 전체 너비. 클릭한 스킬을 여기서 직접 편집한다. -->
+    <div v-if="!loading" class="card skill-detail-card">
+      <template v-if="selectedSkill?.content">
+        <div class="sp-head">
+          <span class="sp-name">{{ selectedSkill.name }}</span>
+          <span class="sp-tag" :class="selectedSkill.status">
+            {{ selectedSkill.status === "uploaded" ? "업로드" : "자동 생성" }}
+          </span>
+          <span class="sp-editable">내용을 직접 수정할 수 있습니다.</span>
+        </div>
+        <textarea v-model="editContent" class="sp-editor" spellcheck="false" />
+      </template>
+      <div v-else class="sp-empty">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" />
+        </svg>
+        <span>스킬을 자동 생성/업로드한 뒤<br />해당 스킬을 클릭하면 내용이 여기에 표시됩니다.</span>
       </div>
     </div>
   </div>
@@ -301,6 +310,7 @@ h3 {
 .cols {
   display: flex;
   gap: 22px;
+  margin-bottom: 16px;
 }
 .col-main {
   flex: 1;
@@ -491,14 +501,9 @@ h3 {
   font-size: 11.5px;
   font-weight: 600;
 }
-.skill-preview {
-  flex: 1;
-  min-height: 170px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  padding: 14px;
-  overflow: auto;
+.skill-detail-card {
+  display: flex;
+  flex-direction: column;
 }
 .sp-head {
   display: flex;
@@ -506,13 +511,17 @@ h3 {
   gap: 7px;
   margin-bottom: 10px;
 }
+.sp-editable {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--tx3);
+}
 .sp-name {
   font-size: 11.5px;
   font-weight: 700;
   color: var(--tx2);
 }
 .sp-tag {
-  margin-left: auto;
   font-size: 11px;
   font-weight: 600;
   color: var(--grn);
@@ -524,17 +533,28 @@ h3 {
     background: var(--blu-bg);
   }
 }
-.sp-body {
+.sp-editor {
+  width: 100%;
+  min-height: 420px;
+  resize: vertical;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 16px 18px;
   font-family: ui-monospace, monospace;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
   color: var(--tx2);
-  margin: 0;
-  white-space: pre-wrap;
+  outline: none;
+  white-space: pre;
+  overflow: auto;
+  &:focus {
+    border-color: var(--pri);
+  }
 }
 .sp-empty {
   height: 100%;
-  min-height: 140px;
+  min-height: 200px;
   display: flex;
   flex-direction: column;
   align-items: center;
