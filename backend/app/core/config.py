@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # 테스트/특수 배포에서 끄고 싶으면 false.
     auto_migrate: bool = True
 
+    # 초기 관리자 계정. 마이그레이션(0003) 시 이 계정이 없으면 생성한다.
+    # 둘 다 비어 있으면 admin 생성을 건너뛴다(운영에서 의도치 않은 기본 계정 방지).
+    initial_admin_id: str | None = None
+    initial_admin_password: str | None = None
+
     @property
     def storage_root(self) -> Path:
         """업로드 저장 루트를 cwd와 무관한 절대경로로 해석한다.

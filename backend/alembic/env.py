@@ -22,6 +22,12 @@ config.set_main_option("sqlalchemy.url", settings.database_url)
 
 target_metadata = Base.metadata
 
+# alembic 버전 기록(alembic_version)을 서비스 스키마 안에 둔다.
+# public에 두면 collector_service 스키마를 드롭해도 버전 포인터가 남아
+# "버전은 0002인데 테이블은 없음" 같은 드리프트가 생긴다. 스키마 안에 두면
+# 스키마 드롭 시 버전 기록도 함께 사라져 실제 상태와 항상 일치한다.
+VERSION_TABLE_SCHEMA = "collector_service"
+
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
@@ -30,6 +36,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table_schema=VERSION_TABLE_SCHEMA,
     )
 
     with context.begin_transaction():
@@ -37,9 +44,18 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        version_table_schema=VERSION_TABLE_SCHEMA,
+    )
 
+    # 버전 테이블을 만들려면 대상 스키마가 먼저 존재해야 한다(첫 마이그레이션이
+    # 스키마를 만들기 전에 alembic이 버전 테이블 생성을 시도하므로 부트스트랩).
+    # 반드시 alembic 트랜잭션 '안'에서 만들어야 한다. 밖에서 실행하면 커밋되지 않은
+    # 트랜잭션이 열려, alembic이 커밋하지 않는 그 트랜잭션과 함께 전체가 롤백된다.
     with context.begin_transaction():
+        connection.exec_driver_sql(f'CREATE SCHEMA IF NOT EXISTS "{VERSION_TABLE_SCHEMA}"')
         context.run_migrations()
 
 

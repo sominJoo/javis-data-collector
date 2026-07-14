@@ -39,4 +39,10 @@ async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse
     )
 
 
+@app.get("/health", tags=["health"])
+async def health() -> dict[str, str]:
+    """컨테이너/오케스트레이터 헬스체크용. 인증 불필요, 의존성 미검사(liveness)."""
+    return {"status": "ok"}
+
+
 app.include_router(api_router, prefix="/api/v1")
