@@ -1,0 +1,59 @@
+// 디자인 토큰 — 초기 디자인 프로토타입에서 이관.
+// data-theme 속성(html)에 따라 라이트/다크 CSS 변수를 전환한다.
+
+[data-theme="light"] {
+  --bg: #f4f3f8;
+  --panel: #ffffff;
+  --panel2: #faf9fc;
+  --line: #eae7f1;
+  --line2: #ddd9e8;
+  --tx: #2a2833;
+  --tx2: #6c6a7c;
+  --tx3: #9c99ab;
+  --field: #eef0fb;
+  --fieldline: #e3e5f4;
+  --pri: #a94fa0;
+  --hover: #f4f1f9;
+  --sel: #f6eef7;
+  --grn-bg: #e6f7ef;
+  --grn: #2b9a73;
+  --amb-bg: #fbf1d8;
+  --amb: #b5811d;
+  --blu-bg: #e8effc;
+  --blu: #3f6cc4;
+  --red-bg: #fdecec;
+  --red: #cf5151;
+  --sb1: #7c51a6;
+  --sb2: #c05cab;
+}
+
+[data-theme="dark"] {
+  --bg: #131019;
+  --panel: #1d1926;
+  --panel2: #241f30;
+  --line: #2f2940;
+  --line2: #3d3651;
+  --tx: #ecebf2;
+  --tx2: #a5a1b6;
+  --tx3: #726d84;
+  --field: #241f30;
+  --fieldline: #39324a;
+  --pri: #c977be;
+  --hover: #272031;
+  --sel: #2b2338;
+  --grn-bg: #123027;
+  --grn: #4bcb9b;
+  --amb-bg: #332912;
+  --amb: #e0b451;
+  --blu-bg: #16223f;
+  --blu: #7ba0ea;
+  --red-bg: #3a1e22;
+  --red: #ea8080;
+  --sb1: #5c3d80;
+  --sb2: #8f4386;
+}
+
+// 공통 그라디언트/셰도우 (브랜드 primary)
+$grad-brand: linear-gradient(135deg, #7c4da0, #c05cab);
+$grad-rail: linear-gradient(180deg, var(--sb1), var(--sb2));
+$shadow-brand: 0 14px 28px -12px rgba(160, 60, 150, 0.55);

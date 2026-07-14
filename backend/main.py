@@ -1,14 +1,27 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
+from app.core.config import get_settings
 from app.core.logging import configure_logging
+from app.core.migrations import upgrade_to_head
 from app.schemas.common import ApiResponse
 
 configure_logging()
 
-app = FastAPI(title="jarivs-data-collector")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 운영 DB(collector_service) 스키마를 항상 최신으로 맞춘 뒤 서비스 기동.
+    if get_settings().auto_migrate:
+        await upgrade_to_head()
+    yield
+
+
+app = FastAPI(title="jarivs-data-collector", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,6 +37,12 @@ async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse
         status_code=exc.status_code,
         content=ApiResponse.failure(str(exc.detail)).model_dump(),
     )
+
+
+@app.get("/health", tags=["health"])
+async def health() -> dict[str, str]:
+    """컨테이너/오케스트레이터 헬스체크용. 인증 불필요, 의존성 미검사(liveness)."""
+    return {"status": "ok"}
 
 
 app.include_router(api_router, prefix="/api/v1")
