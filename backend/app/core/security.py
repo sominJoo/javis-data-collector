@@ -38,8 +38,12 @@ class Principal:
 
 
 def create_access_token(subject: str, extra_claims: dict[str, Any] | None = None) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
-    payload: dict[str, Any] = {"sub": subject, "exp": expire}
+    payload: dict[str, Any] = {"sub": subject}
+    # jwt_expire_minutes<=0 이면 만료 없는 토큰(exp 미포함). 그 외에는 분 단위 만료.
+    if settings.jwt_expire_minutes > 0:
+        payload["exp"] = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.jwt_expire_minutes
+        )
     if extra_claims:
         payload.update(extra_claims)
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
