@@ -222,7 +222,7 @@ class DocumentAnalysisAgent:
             )
 
         results.append(
-            {"type": "TOC", "title": "목차 스킬", "preview": toc[:60], "content": toc}
+            {"type": "TOC_STRUCTURE", "title": "목차 스킬", "preview": toc[:60], "content": toc}
         )
         results.append(
             {"type": "STYLE", "title": "문체 스킬", "preview": style[:60], "content": style}
