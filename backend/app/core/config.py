@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     file_storage_path: str = "./storage/uploads"
 
     jwt_secret: str
-    jwt_expire_minutes: int = 60
+    jwt_expire_minutes: int = 60  # 0 이하이면 만료 없는 토큰(개발용). 운영은 양수 유지.
 
     # API Key/DB 비밀번호/LLM secret 등을 대칭 암호화하는 Fernet 키 (base64 32바이트).
     encryption_key: str

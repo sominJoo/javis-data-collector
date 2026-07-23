@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 _BG_TASKS: set[asyncio.Task] = set()
 
 # 문서에서 추출한 스킬로 취급해 사용자 DB report_skill에 등록할 결과 타입(SUMMARY 제외).
-_SKILL_TYPES = {"TOC", "STYLE"}
+_SKILL_TYPES = {"TOC_STRUCTURE", "STYLE"}
 
 
 def _parse_uuid(value: str) -> uuid.UUID:

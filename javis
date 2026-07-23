@@ -35,6 +35,22 @@ is_running() {  # $1: pidfile
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
+# 기동 직후 프로세스가 살아있는지 확인한다.
+# 죽었으면 로그 마지막 부분을 출력하고 실패(1)를 반환한다.
+STARTUP_WAIT="${STARTUP_WAIT:-3}"   # 기동 확인 대기 시간(초)
+verify_started() {  # $1: pidfile  $2: 이름  $3: 로그파일
+  sleep "$STARTUP_WAIT"
+  if is_running "$1"; then
+    return 0
+  fi
+  err "$2 기동 실패 (프로세스가 종료됨). 로그 마지막 30줄:"
+  echo "──────────────────────────────────────────" >&2
+  tail -n 30 "$3" >&2 2>/dev/null || true
+  echo "──────────────────────────────────────────" >&2
+  rm -f "$1" 2>/dev/null || true
+  return 1
+}
+
 # ── start ───────────────────────────────────────────────────
 start_backend() {
   if is_running "$BACKEND_PID"; then
@@ -47,6 +63,7 @@ start_backend() {
       > "$RUN_DIR/backend.log" 2>&1 &
     echo $! > "$BACKEND_PID"
   )
+  verify_started "$BACKEND_PID" backend "$RUN_DIR/backend.log" || return 1
   ok "backend 시작 (PID $(cat "$BACKEND_PID"), http://localhost:${BACKEND_PORT})"
 }
 
@@ -64,6 +81,7 @@ start_frontend() {
     nohup "$NODE_BIN" "$server" > "$RUN_DIR/frontend.log" 2>&1 &
     echo $! > "$FRONTEND_PID"
   )
+  verify_started "$FRONTEND_PID" frontend "$RUN_DIR/frontend.log" || return 1
   ok "frontend 시작 (PID $(cat "$FRONTEND_PID"), http://localhost:${FRONTEND_PORT})"
 }
 
@@ -99,11 +117,16 @@ status_all() {
 mkdir -p "$RUN_DIR"
 case "${1:-}" in
   start)
-    start_backend
-    start_frontend
+    rc=0
+    start_backend  || rc=1
+    start_frontend || rc=1
     echo
     status_all
     log "로그: tail -f .run/backend.log  |  tail -f .run/frontend.log"
+    if [ "$rc" -ne 0 ]; then
+      err "일부 서비스 기동에 실패했습니다. 위 로그를 확인하세요."
+    fi
+    exit "$rc"
     ;;
   stop)
     stop_one "$BACKEND_PID"  backend
@@ -116,10 +139,15 @@ case "${1:-}" in
     stop_one "$BACKEND_PID"  backend
     stop_one "$FRONTEND_PID" frontend
     sleep 1
-    start_backend
-    start_frontend
+    rc=0
+    start_backend  || rc=1
+    start_frontend || rc=1
     echo
     status_all
+    if [ "$rc" -ne 0 ]; then
+      err "일부 서비스 기동에 실패했습니다. 위 로그를 확인하세요."
+    fi
+    exit "$rc"
     ;;
   *)
     echo "사용법: ./javis {start | stop | status | restart}"
